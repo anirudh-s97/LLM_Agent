@@ -3,8 +3,9 @@ import os
 import re
 import smtplib
 import traceback
-import yfinance as yf
-from datetime import datetime
+import logging
+import yfinance as yf 
+import datetime
 from email.mime.text import MIMEText
 from typing import List, Dict
 from google.oauth2.credentials import Credentials
@@ -20,6 +21,11 @@ from typing import Dict, List
 from dotenv import load_dotenv
 
 load_dotenv()
+
+__name__ = "run_to_do"
+logging.basicConfig(level = logging.INFO)
+logger = logging.getLogger(__name__)
+
 
 API_KEYS = {
     'alpha_vantage_api_key': os.getenv('alpha_vantage_api_key')
@@ -64,8 +70,11 @@ def send_email(subject: str, body: str, recipient: str) -> None:
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
             server.login(EMAIL_CREDS['email'], EMAIL_CREDS['password'])
             server.send_message(msg)
+            logger.info("Sucess: Email Notification has been sent..!!")
     except smtplib.SMTPException as e:
-        raise Exception(f"Email failed to send: {str(e)}")
+        logger.info(f"Exception: Email failed to send: {str(e)}")
+    
+    return
 
 
 
@@ -100,6 +109,7 @@ def send_calendar_invite(event_title, event_time, to_emails, location="online"):
     calendar = Calendar()
     event = Event()
     event.name = event_title
+    organizer = "AI SubStack"
     
     # Convert date string to datetime
     # start_time = datetime.strptime(f"{event_date} 09:00:00", "%Y-%m-%d %H:%M:%S")
@@ -121,7 +131,8 @@ def send_calendar_invite(event_title, event_time, to_emails, location="online"):
     msg['To'] = ', '.join(to_emails)
     msg['Subject'] = f"Calendar Invite: {event_title}"
     
-    body = f"You are invited to {event_title} on {event_date} at {event_time}, {location}"
+    body = f"You are invited to participate in {event_title} on {event_date} at {event_time}, {location} \
+    organized by {organizer}"
     msg.attach(MIMEText(body, 'plain'))
     
     # Attach the calendar file
@@ -140,9 +151,9 @@ def send_calendar_invite(event_title, event_time, to_emails, location="online"):
         text = msg.as_string()
         server.sendmail(from_email, to_emails, text)
         server.quit()
-        print("Calendar invite sent successfully!")
+        logger.info("Calendar invite sent successfully!")
     except Exception as e:
-        print(f"Failed to send email: {str(e)}")
+        logger.info(f"Failed to send an invite to the person: {str(e)}")
 
 
 
@@ -175,14 +186,16 @@ def get_stock_price(symbol: str) -> str:
         # Format change percent if available
         if change_percent != 'N/A':
             change_percent = f"{change_percent:.2f}%"
+
+        logger.info("Retrieved Stock Information Successfully through online APIs.")
         return f"""
         {symbol} Stock Update:
         Price: ${price}
         Change: {change_percent}
         """
     except Exception as e:
-        raise Exception(f"Stock data fetch failed: {str(e)}")
-
+        logger.info(f"Exception : Stock data fetch failed: {str(e)}")
+        return
 
 #-------------------
 # Scheduler System
@@ -246,10 +259,9 @@ def process_todo_file(folder_path: str) -> None:
     scheduler = setup_scheduler()
 
     for cmd in commands:
-        print(cmd)
-        print()
+        logger.info("Command: ", cmd)
         try:
-            if cmd['type'] == '1email_reminder':
+            if cmd['type'] == 'email_reminder':
                 message = cmd['params'][0]
                 send_email(
                     subject="Reminder Notification",
@@ -266,14 +278,12 @@ def process_todo_file(folder_path: str) -> None:
                 )
 
             elif cmd['type'] == 'stock_alert':
-                symbol, time_str = cmd['params']
-
+                symbol, _ = cmd['params']
+                date_ = datetime.datetime.now() + datetime.timedelta(minutes=2) 
+                time_str = datetime.datetime.strftime(date_, '%Y-%m-%d %H:%M:%S') 
+                hour, minute = time_str.split(" ")[1].split(":")[0], time_str.split(" ")[1].split(":")[1]
                 time_parts = time_str.split(':')
-                if len(time_parts) != 2:
-                    raise ValueError(f"Invalid time format: {time_str}. Expected format HH:MM")
-                    
-                hour = int(time_parts[0])
-                minute = int(time_parts[1])
+    
                 scheduler.add_job(
                     lambda: send_email(
                         subject=f"{symbol} Stock Update",
@@ -284,6 +294,7 @@ def process_todo_file(folder_path: str) -> None:
                     hour=hour,
                     minute=minute
                 )
-
+                logger.info("Successfully Scheduled CRON Job.!!!")
         except Exception as e:
-            print(f"Failed to process command: {str(traceback.format_exc(e))}")
+            logger.info(f"Failed to process command: {str(traceback.format_exc(e))}")
+    return

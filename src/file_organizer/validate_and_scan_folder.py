@@ -1,5 +1,9 @@
 import os
 from typing import Dict, List
+import logging
+__name__ = "__folder_scanner__"
+logging.basicConfig(level = logging.INFO)
+logger = logging.getLogger(__name__)
 
 def scan_folder(directory: str) -> List[str]:
     """
@@ -23,6 +27,8 @@ def scan_folder(directory: str) -> List[str]:
                 if entry.is_file():
                     files.append(entry.name)
     except FileNotFoundError:
+        logging.info("The Folder Path you have shared is empty")
+        logging.info("Please give a folder path that has files to process")
         return []
     return files
 
@@ -46,6 +52,7 @@ def validate_folder_and_files(folder_path: str) -> bool:
     check = True
 
     if not os.path.exists(folder_path) or os.listdir(folder_path) == []:
+        logger.info("The path you have entered either doesn't exist or there are no files in the folder to process.")
         check = False
     
     return check

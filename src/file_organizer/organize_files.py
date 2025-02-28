@@ -1,6 +1,10 @@
 import os
 import shutil
 from typing import Dict, List
+import logging
+__name__ = "__file_organizer__"
+logging.basicConfig(level = logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 def move_files_to_categories(source_dir: str, 

@@ -1,6 +1,10 @@
 import os
 import requests
 from dotenv import load_dotenv
+import logging
+__name__ = "__image_compressor__"
+logging.basicConfig(level = logging.INFO)
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -29,20 +33,22 @@ def compress_image(file_path: str) -> str:
     """
     try:
         url = 'https://api.tinify.com/shrink'
-        print(API_KEYS["tinypng"])
         auth = ('api', API_KEYS['tinypng'])
         
+        logger.info("Started communicating with TinyPNG online service to compress the given input image..")
+
         with open(file_path, 'rb') as f:
             response = requests.post(url, auth=auth, data=f.read())
             
         if response.status_code == 201:
+            logger.info("Processed and compressed the given input image successfully.....")
             b = file_path.split(".")[0]
             output_path = f"{b}_compressed.png"
             with open(output_path, 'wb') as f:
                 f.write(requests.get(response.json()['output']['url']).content)
+                logger.info("Saved the resultant compressed image successfully...")
+
             return output_path
-            
-        raise Exception(f"Image compression failed: {response.text}")
         
     except Exception as e:
-        raise Exception(f"Image processing error: {str(e)}")
+        logger.info(f"Image compression failed: {str(e)}")

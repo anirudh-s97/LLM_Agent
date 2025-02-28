@@ -16,7 +16,8 @@ from src.llm_engine.gemini_agent import Agent
 from src.llm_engine.llm_utilities import parse_llm_output
 
 
-logger = logging.getLogger(__name__)
+logging.basicConfig(level = logging.INFO)
+logger = logging.getLogger("scheduler")
 
 def accumulate_tools():
     total_tools = []
@@ -56,13 +57,11 @@ def get_list_of_fn_calls_to_start_job(steps_from_llm, tool_descriptions, fn_orde
                         If you think a particular step cannot be solved using any of the tools, simply skip it.
                         The tools you have access to are:
                         {"".join(tool_descriptions)}
-                        The order of functions are:
-                        {fn_order}
                         """
     
     agent_job = """Plan the sequence of function calls needed to execute the tasks given the steps.
                 Return a JSON array of function calls in order that needs to be executed.
-                Don't give any arguments in your sequence of function calls.Ensure the function order is maintained. Just return one json file with function names and steps following the template below. 
+                Don't give any arguments in your sequence of function calls.Just return one json file with function names and steps following the template below. 
                 [{'step': 'step_number', 'function': 'function_name'}].
                 """
     task_identifier_agent = Agent(system_prompt=system_prompt + agent_job)
@@ -70,18 +69,51 @@ def get_list_of_fn_calls_to_start_job(steps_from_llm, tool_descriptions, fn_orde
 
     return response
 
+def function_call_validator(function_calls, fn_order):
+
+    system_prompt = """You are given a  list of function calls that are helpful in solving a particular task.
+                        Your job is to validate whether the sequence are in the correct order or not.
+                        To validate you'd be given the tool sequence to check if the given function calls
+                        are following the tool sequence.
+                        Tools Sequence:
+                        {}
+                        """.format(fn_order)
+    
+    agent_job = """Check if function calls follow the order or not.
+                    If they don't, align them correctly.
+                    Return only the ordered function calls with the below template.
+
+                    "'function_calls': [{'step': 'step_number', 'function': 'function_name'}]".
+                    """
+    
+    validator_agent = Agent(system_prompt=system_prompt + agent_job)
+    response = validator_agent.perform_action(function_calls)
+
+    new_job= f"""Ensure that the below response is a valid JSON.
+                {response}
+                
+                Do not say that "HERE is your JSON", return only the valid JSON
+                """
+    second_validator_agent = Agent(system_prompt="""You are a JSON Validator""")
+    final_response = second_validator_agent.perform_action(new_job)
+
+    return final_response
+
+
 def scheduler(user_query, folder_path):
 
     tools, desc = accumulate_tools()
     fn_order = list(tools.keys())
+    logger.info("Using the solver agent to break the problem into sub-problems\n")
     llm_response = get_list_of_steps_to_perform_user_query(user_query)
     function_calls = get_list_of_fn_calls_to_start_job(llm_response, desc, fn_order)
-
-    dict_info = parse_llm_output(function_calls)
-    print(dict_info)
-    if dict_info:
+    validated_function_calls = function_call_validator(function_calls=function_calls, fn_order=fn_order)
+    logger.info(validated_function_calls)
+    dict_info = parse_llm_output(validated_function_calls)["function_calls"]
+    logger.info(dict_info)
+    if isinstance(dict_info, list):
         logger.info("Started scheduling the sub-tasks and tools......")
-        print("""
+        logger.info("""
                 ░░░░
                 ░    ░
             {○_○}   ░ Processing...
@@ -93,18 +125,26 @@ def scheduler(user_query, folder_path):
         
         for step in dict_info:
             func = tools.get(step["function"])
+            logger.info(func)
             if func is not None:
                 if step["function"] == "move_files_to_categories":
                     dest_map = func(source_dir=folder_path)
+                    if dest_map:
+                        logger.info("Successfully identified different categories of files and moved them to appropriate subfolders")
+                        logger.info("Task Completed")
                     
                 elif step["function"] == "compress_pdf":
+                    logger.info("came here")
                     fname = ""
                     for file in dest_map:
                         if file.endswith(".pdf"):
                             fname = dest_map[file]
                             break
+                    logger.info(fname)
                     if fname != "":
-                        func(file_path=fname)   
+                        func(file_path=fname)
+                        logger.info("Successfully used online services to compress the input pdf and saved the results.")
+                        logger.info("Task is completed successfully!!!")   
                 
                 elif step["function"] == "compress_image":
                     fname = ""
@@ -113,18 +153,19 @@ def scheduler(user_query, folder_path):
                             fname = dest_map[file]
                             break
                     if fname != "":
-                        func(file_path=fname)  
+                        func(file_path=fname)
+                        logger.info("Successfully used online services to compress the input pdf and saved the results.")
+                        logger.info("Task is completed successfully!!!")   
                 
                 elif step["function"] == "process_todo_file":
                     func(folder_path=folder_path)
+                
+                else:
+                    logger.info("There is no such available tool. Sorry couldn't schedule sub-task!!!")
+                
+
+        return "The user-query is resolved and the sub-tasks are completed!!!"
                      
-
-
-
-
-
-
-
 
     else:
         return "LLM was unable to fetch the tools required to do your job. Sorry for the inconvenience"
