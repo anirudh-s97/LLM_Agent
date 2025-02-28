@@ -1,0 +1,17 @@
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment variables
+.env
+
+# Data folders
+root_data/
+data/
+
+# Calendar files
+invite.ics
+
+run_agent.py
+utility_functions.py
